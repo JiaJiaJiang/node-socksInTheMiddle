@@ -8,7 +8,7 @@ TCP requests are only checked whether those are HTTP requests, or the request wi
 ## Install
 
 ```shell
-npm i socksInTheMiddle
+npm i socksinthemiddle
 ```
 
 

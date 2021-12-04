@@ -154,14 +154,14 @@ class SocksInTheMiddle{
 	}
 	async _responseModder(resToClient,resFromServer,reqFromClient,reqToServer){
 		let headers=Object.assign({},resFromServer.headers),streamChain=[resFromServer];
-		let contentDecoder=contentDecoderSelector(resFromServer);
-		if(contentDecoder){
-			delete headers['content-encoding'];
-			streamChain.push(contentDecoder);
-		}
-		delete headers['content-length'];
-		headers['transfer-encoding']='chunked';
 		if(this.responseModder){
+			let contentDecoder=contentDecoderSelector(resFromServer);
+			if(contentDecoder){
+				delete headers['content-encoding'];
+				streamChain.push(contentDecoder);
+			}
+			delete headers['content-length'];
+			headers['transfer-encoding']='chunked';
 			let streamModder=await this.responseModder(headers,resFromServer,reqFromClient);
 			if(streamModder){
 				streamChain.push(streamModder);

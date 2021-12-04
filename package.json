@@ -1,0 +1,29 @@
+{
+  "dependencies": {
+    "iltorb": "^2.4.5",
+    "pump": "^3.0.0",
+    "socks5server": "^4.3.2"
+  },
+  "name": "socksinthemiddle",
+  "description": "use a socks server for web request modification",
+  "version": "0.0.1",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JiaJiaJiang/node-socksInTheMiddle.git"
+  },
+  "keywords": [
+    "socks5",
+    "http",
+    "https"
+  ],
+  "author": "luojia@luojia.me",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/JiaJiaJiang/node-socksInTheMiddle/issues"
+  },
+  "homepage": "https://github.com/JiaJiaJiang/node-socksInTheMiddle#readme"
+}

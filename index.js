@@ -11,6 +11,7 @@ const {
 	UDPRelay,
 } = require('socks5server/src/socks.js');
 
+
 /**
  * for getting a full buffer from a stream and modifying it
  *
@@ -35,6 +36,8 @@ class BufferModder extends Transform{
 		let result=this.processer(Buffer.concat(this.buf));
 		if(typeof result === 'string')result=Buffer.from(result);
 		this.push(result);
+		this.buf.length=0;
+		this.buf=null;
 		setImmediate(cb,null);
 	}
 }
@@ -147,10 +150,15 @@ class SocksInTheMiddle{
 		this.httpLog&&console.log('(proxy out)[ %s -> %s ] %s',reqFromClient.potocol+'://'+reqFromClient.headers.host,options.headers.host,options.path);
 		let reqToServer=(reqFromClient.potocol=='http'?http:https).request(options,resFromServer=>{
 			cb(reqToServer,resFromServer);
-		}).on('error',e=>this.httpLog&&console.error('(proxy error)',reqFromClient.potocol+'://'+reqFromClient.headers.host,options.headers.host,options.path,e));
+		});reqToServer.on('error',e=>{
+			this.httpLog&&console.error('(proxy error)',reqFromClient.potocol+'://'+reqFromClient.headers.host,options.headers.host,options.path,e);
+			setImmediate(()=>{
+				reqToServer.removeAllListeners();
+				reqToServer.destroy();
+			});
+		});
 		streamChain.push(reqToServer);
-		pump(...streamChain)
-		return reqToServer;
+		pump(streamChain)
 	}
 	async _responseModder(resToClient,resFromServer,reqFromClient,reqToServer){
 		let headers=Object.assign({},resFromServer.headers),streamChain=[resFromServer];
@@ -169,7 +177,7 @@ class SocksInTheMiddle{
 		}
 		streamChain.push(resToClient);
 		resToClient.writeHead(resFromServer.statusCode,resFromServer.statusMessage,Object.assign({},headers));
-		pump(...streamChain);
+		pump(streamChain);
 	}
 	/**
 	 *relay tcp connection to inner http server
@@ -203,7 +211,7 @@ class SocksInTheMiddle{
 			
 			if(!port)return;
 			let relay=new TCPRelay(socket, '127.0.0.1', port, CMD_REPLY);
-			relay.on('connection',(socket,relaySocket)=>{
+			relay.once('connection',(socket,relaySocket)=>{
 				this.socksLog&&console.log('[TCP]',`${socket.remoteAddress}:${socket.remotePort} ==> ${net.isIP(rawAddress)?'':'('+rawAddress+')'} ${relaySocket.remoteAddress}:${relaySocket.remotePort}`);
 			}).on('proxy_error',(err,socket,relaySocket)=>{
 				this.socksLog&&console.error('	[TCP proxy error]',`${relay.remoteAddress}:${relay.remotePort}`,err.message);

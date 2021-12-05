@@ -2,7 +2,7 @@
   "dependencies": {
     "iltorb": "^2.4.5",
     "pump": "^3.0.0",
-    "socks5server": "^4.3.2"
+    "socks5server": "^4.4.1"
   },
   "name": "socksinthemiddle",
   "description": "use a socks server for web request modification",

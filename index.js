@@ -150,7 +150,7 @@ class SocksInTheMiddle{
 		this.httpLog&&console.log('(proxy out)[ %s -> %s ] %s',reqFromClient.potocol+'://'+reqFromClient.headers.host,options.headers.host,options.path);
 		let reqToServer=(reqFromClient.potocol=='http'?http:https).request(options,resFromServer=>{
 			cb(reqToServer,resFromServer);
-		});reqToServer.on('error',e=>{
+		}).on('error',e=>{
 			this.httpLog&&console.error('(proxy error)',reqFromClient.potocol+'://'+reqFromClient.headers.host,options.headers.host,options.path,e);
 			setImmediate(()=>{
 				reqToServer.removeAllListeners();

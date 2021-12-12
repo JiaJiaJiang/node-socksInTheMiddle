@@ -59,8 +59,9 @@ server.setHTTPModder(async (headers,reqFromClient,resToClient)=>{//request modif
 	}
 
 	//If yout want to do a custom respond or to block the request, 
-	//just operate the resToClient object like a common http response and return false here.
-	resToClient.end('blocked');//If resToClient.end was called here, the relay request will not be sent to the target server
+	//just operate the resToClient object like a common http response.
+	//If you want to handle this request asynchronously, return false here so the relay will not be created.
+	resToClient.end('blocked');//If resToClient.end was called here, the relay request will not be created.
 	return;
 	
 	//If you want to edit request body, you can use a BufferModder, see below for example

@@ -136,7 +136,7 @@ class SocksInTheMiddle{
 			let streamModder=await this.requestModder(headers,reqFromClient,resToClient);
 			if(streamModder){
 				streamChain.push(streamModder);
-			}else if(streamModder===false){
+			}else if(resToClient.writableEnded){
 				return;
 			}
 		}
@@ -157,6 +157,10 @@ class SocksInTheMiddle{
 				reqToServer.destroy();
 			});
 		});
+		reqFromClient.once('close',()=>{
+			reqToServer.end();
+		})
+		reqToServer.setTimeout(10000);
 		streamChain.push(reqToServer);
 		pump(streamChain)
 	}

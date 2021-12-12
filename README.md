@@ -55,14 +55,13 @@ server.setHTTPModder(async (headers,reqFromClient,resToClient)=>{//request modif
 
 	//e.g. delete etag in request header when the url is '/favicon.ico'
 	if(reqFromClient.url.startsWith('/favicon.ico')){
-		delete headers['Etag'];
+		delete headers['etag'];
 	}
 
 	//If yout want to do a custom respond or to block the request, 
 	//just operate the resToClient object like a common http response and return false here.
-	resToClient.end('blocked');
-	return false;//return false so the relay request will not be sent to the target server
-	//!!!!remember to return false if you end the resToClient here!!!!  otherwise the requests will hang on
+	resToClient.end('blocked');//If resToClient.end was called here, the relay request will not be sent to the target server
+	return;
 	
 	//If you want to edit request body, you can use a BufferModder, see below for example
 	

@@ -43,8 +43,17 @@ You can create a CA yourself and sign a certificate for the target domain then f
 
 ### Modify HTTP request and response
 
+##### server.setHTTPModder(requestModder : Function, responseModder : Function)
+
+Both modder functions can modify http headers for the request or the response.
+
+If the function returns a Transform stream, raw data will be piped in and the stream will be piped to the target.
+
+If the function returns just a Readable stream, raw data will be ignored, and the stream will be piped to the target.
+
 ```javascript
 const {BufferModder}=require('socksInTheMiddle');
+const fs=require('fs');
 //HTTP modifier
 server.setHTTPModder(async (headers,reqFromClient,resToClient)=>{//request modifier
 	//you can modify request headers here and they will be sent to target server
@@ -81,7 +90,9 @@ server.setHTTPModder(async (headers,reqFromClient,resToClient)=>{//request modif
 			let str=buf.toString();
 			return str.replace(/更多/g,'超级多');//return a Buffer or a string is ok
 		});
-	}
+	}else if(reqFromClient.url.startsWith('/test')){//Or return a Readable stream for an entirely new result
+        return fs.createReadStream('path/to/test.txt');
+    }
 });
 ```
 

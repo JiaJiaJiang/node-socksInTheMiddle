@@ -2,7 +2,7 @@ const net = require('net'),
 	zlib = require('zlib'),
 	http = require('http'),
 	https = require('https'),
-	{Transform,PassThrough} = require('stream'),
+	{Transform,Readable} = require('stream'),
 	pump = require('pump'),
 	brotli = require('iltorb');
 const {
@@ -135,7 +135,11 @@ class SocksInTheMiddle{
 		if(this.requestModder){
 			let streamModder=await this.requestModder(headers,reqFromClient,resToClient);
 			if(streamModder){
-				streamChain.push(streamModder);
+				if(streamModder instanceof Transform){//if the modder stream is an instance of Transform, the raw data will be piped in
+					streamChain.push(streamModder);
+				}else if(streamModder instanceof Readable){//if the modder stream is just a readable stream, the stream will replace the raw data
+					streamChain=[streamModder];
+				}
 			}else if(resToClient.writableEnded || streamModder===false){
 				return;
 			}
@@ -169,14 +173,19 @@ class SocksInTheMiddle{
 		if(this.responseModder){
 			let streamModder=await this.responseModder(headers,resFromServer,reqFromClient);
 			if(streamModder){
-				let contentDecoder=contentDecoderSelector(resFromServer);
-				if(contentDecoder){
-					delete headers['content-encoding'];
-					streamChain.push(contentDecoder);
-				}
 				delete headers['content-length'];
 				headers['transfer-encoding']='chunked';
-				streamChain.push(streamModder);
+				if(streamModder instanceof Transform){//if the modder stream is an instance of Transform, the raw data will be piped in
+					let contentDecoder=contentDecoderSelector(resFromServer);
+					if(contentDecoder){
+						delete headers['content-encoding'];
+						streamChain.push(contentDecoder);
+					}
+					streamChain.push(streamModder);
+				}else if(streamModder instanceof Readable){//if the modder stream is just a readable stream, the stream will replace the raw data
+					delete headers['content-encoding'];
+					streamChain=[streamModder];
+				}
 			}
 		}
 		streamChain.push(resToClient);

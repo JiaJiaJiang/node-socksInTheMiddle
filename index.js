@@ -32,8 +32,8 @@ class BufferModder extends Transform{
 		this.buf.push(chunk);
 		setImmediate(cb,null)
 	}
-	_flush(cb){
-		let result=this.processer(Buffer.concat(this.buf));
+	async _flush(cb){
+		let result=await this.processer(Buffer.concat(this.buf));
 		if(typeof result === 'string')result=Buffer.from(result);
 		this.push(result);
 		this.buf.length=0;

@@ -139,6 +139,7 @@ class SocksInTheMiddle{
 					streamChain.push(streamModder);
 				}else if(streamModder instanceof Readable){//if the modder stream is just a readable stream, the stream will replace the raw data
 					streamChain=[streamModder];
+					reqFromClient.on('data',()=>{});//consume source data
 				}
 			}else if(resToClient.writableEnded || streamModder===false){
 				return;
@@ -185,11 +186,15 @@ class SocksInTheMiddle{
 				}else if(streamModder instanceof Readable){//if the modder stream is just a readable stream, the stream will replace the raw data
 					delete headers['content-encoding'];
 					streamChain=[streamModder];
+					resFromServer.on('data',()=>{});//consume source data
 				}
 			}
 		}
 		streamChain.push(resToClient);
-		resToClient.writeHead(resFromServer.statusCode,resFromServer.statusMessage,Object.assign({},headers));
+		for(let header in headers){
+			resToClient.setHeader(header,headers[header]);
+		}
+		resToClient.writeHead(resFromServer.statusCode,resFromServer.statusMessage);
 		pump(streamChain);
 	}
 	/**

@@ -130,9 +130,10 @@ class SocksInTheMiddle{
 		});
 	}
 	async _requestModder(reqFromClient,resToClient,cb){
-		let headers=Object.assign({},reqFromClient.headers),streamChain=[reqFromClient];
+		let headers=Object.assign({},reqFromClient.headers),streamChain=[reqFromClient],
+			overrideRequestOptions={};
 		if(this.requestModder){
-			let streamModder=await this.requestModder(headers,reqFromClient,resToClient);
+			let streamModder=await this.requestModder(headers,reqFromClient,resToClient,overrideRequestOptions);
 			if(streamModder){
 				if(streamModder instanceof Transform){//if the modder stream is an instance of Transform, the raw data will be piped in
 					streamChain.push(streamModder);
@@ -152,7 +153,7 @@ class SocksInTheMiddle{
 			rejectUnauthorized:false
 		};
 		this.httpLog&&console.log('(proxy out)[ %s -> %s ] %s',reqFromClient.potocol+'://'+reqFromClient.headers.host,options.headers.host,options.path);
-		let reqToServer=(reqFromClient.potocol=='http'?http:https).request(options,resFromServer=>{
+		let reqToServer=(reqFromClient.potocol=='http'?http:https).request(Object.assign(options,overrideRequestOptions),resFromServer=>{
 			cb(reqToServer,resFromServer);
 		}).on('error',e=>{
 			this.httpLog&&console.error('(proxy error)',reqFromClient.potocol+'://'+reqFromClient.headers.host,options.headers.host,options.path,e);

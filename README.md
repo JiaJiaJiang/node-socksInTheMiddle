@@ -55,7 +55,7 @@ If the function returns just a Readable stream, raw data will be ignored, and th
 const {BufferModder}=require('socksInTheMiddle');
 const fs=require('fs');
 //HTTP modifier
-server.setHTTPModder(async (headers,reqFromClient,resToClient)=>{//request modifier
+server.setHTTPModder(async (headers,reqFromClient,resToClient,overrideRequestOptions)=>{//request modifier
 	//you can modify request headers here and they will be sent to target server
 	console.log('client request headers:',headers);
 
@@ -72,6 +72,10 @@ server.setHTTPModder(async (headers,reqFromClient,resToClient)=>{//request modif
 	//If you want to handle this request asynchronously, return false here so the relay will not be created.
 	resToClient.end('blocked');//If resToClient.end was called here, the relay request will not be created.
 	return;
+
+	//to override relay request options, fill this object
+	overrideRequestOptions;//for (http||https).request method
+	overrideRequestOptions.rejectUnauthorized=true;
 	
 	//If you want to edit request body, you can use a BufferModder, see below for example
 	

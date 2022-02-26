@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "iltorb": "^2.4.5",
     "pump": "^3.0.0",
     "socks5server": "^4.4.2"
   },

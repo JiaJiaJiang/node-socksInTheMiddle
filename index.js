@@ -3,8 +3,7 @@ const net = require('net'),
 	http = require('http'),
 	https = require('https'),
 	{Transform,Readable} = require('stream'),
-	pump = require('pump'),
-	brotli = require('iltorb');
+	pump = require('pump');
 const {
 	createSocksServer,
 	TCPRelay,
@@ -293,7 +292,7 @@ function contentDecoderSelector(sourceStream){
 		switch(enc){
 			case 'gzip':stream = zlib.createUnzip();break;
 			case 'deflate':stream = zlib.createInflate();break;
-			case 'br':stream = brotli.decompressStream();break;
+			case 'br':stream = zlib.createBrotliDecompress();break;
 			default:throw(new Error('unknown encoding:'+enc));
 		}
 	}

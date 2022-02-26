@@ -131,7 +131,7 @@ class SocksInTheMiddle{
 	}
 	async _requestModder(reqFromClient,resToClient,cb){
 		let headers=Object.assign({},reqFromClient.headers),streamChain=[reqFromClient],
-			overrideRequestOptions={};
+			overrideRequestOptions={protocol:reqFromClient.potocol=='http'?'http':'https'};
 		if(this.requestModder){
 			let streamModder=await this.requestModder(headers,reqFromClient,resToClient,overrideRequestOptions);
 			if(streamModder){
@@ -145,18 +145,25 @@ class SocksInTheMiddle{
 				return;
 			}
 		}
+		let host=headers.host.split(':');
 		let options={
 			headers,
 			method:reqFromClient.method,
 			path:reqFromClient.url,
-			hostname:headers.host,
+			hostname:host[0],
+			port:host[1],
 			rejectUnauthorized:false
 		};
+		const protocol=overrideRequestOptions.protocol;
+		delete overrideRequestOptions.protocol;
 		this.httpLog&&console.log('(proxy out)[ %s -> %s ] %s',reqFromClient.potocol+'://'+reqFromClient.headers.host,options.headers.host,options.path);
-		let reqToServer=(reqFromClient.potocol=='http'?http:https).request(Object.assign(options,overrideRequestOptions),resFromServer=>{
+		let reqToServer=(protocol==='http'?http:https).request(Object.assign(options,overrideRequestOptions),resFromServer=>{
 			cb(reqToServer,resFromServer);
 		}).on('error',e=>{
-			this.httpLog&&console.error('(proxy error)',reqFromClient.potocol+'://'+reqFromClient.headers.host,options.headers.host,options.path,e);
+			if(this.httpLog){
+				if(e.rawPacket)e.rawText=e.rawPacket.toString();
+				console.error('(proxy error)',reqFromClient.potocol+'://'+reqFromClient.headers.host,options.headers.host,options.path,e);
+			}
 			setImmediate(()=>{
 				reqToServer.removeAllListeners();
 				reqToServer.destroy();

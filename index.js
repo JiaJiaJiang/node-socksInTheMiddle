@@ -2,14 +2,14 @@ const net = require('net'),
 	zlib = require('zlib'),
 	http = require('http'),
 	https = require('https'),
-	{Transform,Readable} = require('stream'),
-	pump = require('pump');
+	{Transform,Readable} = require('stream');
 const {
 	createSocksServer,
 	TCPRelay,
 	UDPRelay,
 } = require('socks5server/src/socks.js');
-
+const { pipeline } = require('stream');
+const { request } = require('http2-client');
 
 /**
  * for getting a full buffer from a stream and modifying it
@@ -123,15 +123,20 @@ class SocksInTheMiddle{
 		this.udpModder=func;
 		return this;
 	}
-	dataModder(reqFromClient,resToClient,potocol){
-		reqFromClient.potocol=potocol;
+	dataModder(reqFromClient,resToClient,protocol){
+		reqFromClient.protocol=protocol;
 		this._requestModder(reqFromClient,resToClient,(reqToServer,resFromServer)=>{
 			this._responseModder(resToClient,resFromServer,reqFromClient,reqToServer);
 		});
 	}
 	async _requestModder(reqFromClient,resToClient,cb){
-		let headers=Object.assign({},reqFromClient.headers),streamChain=[reqFromClient],
-			overrideRequestOptions={protocol:reqFromClient.potocol=='http'?'http':'https'};
+		let rawheaders=Object.assign({},reqFromClient.headers),streamChain=[reqFromClient],
+			overrideRequestOptions={protocol:reqFromClient.protocol=='http'?'http:':'https:'};
+		const headers={};
+		for(let n in rawheaders){
+			headers[n.replace(/^\:/,'')]=rawheaders[n];
+		}
+		// console.log(headers);
 		if(this.requestModder){
 			let streamModder=await this.requestModder(headers,reqFromClient,resToClient,overrideRequestOptions);
 			if(streamModder){
@@ -146,38 +151,41 @@ class SocksInTheMiddle{
 			}
 		}
 		let host=headers.host.split(':');
-		let options={
+		let options=Object.assign({
 			headers,
 			method:reqFromClient.method,
 			path:reqFromClient.url,
 			hostname:host[0],
 			port:host[1],
-			rejectUnauthorized:false
-		};
-		const protocol=overrideRequestOptions.protocol;
-		delete overrideRequestOptions.protocol;
-		this.httpLog&&console.log('(proxy out)[ %s -> %s ] %s',reqFromClient.potocol+'://'+reqFromClient.headers.host,options.headers.host,options.path);
-		let reqToServer=(protocol==='http'?http:https).request(Object.assign(options,overrideRequestOptions),resFromServer=>{
+			timeout:10000,
+			rejectUnauthorized:true,
+		},overrideRequestOptions);
+		if(!options.port){
+			options.port=options.protocol==='https:'?443:80;
+		}
+		const relayUrl=`${options.protocol}//${options.hostname}:${options.port}${options.path}`;
+		// const protocol=overrideRequestOptions.protocol;
+		this.httpLog&&console.log('(relay out)[ %s -> %s ] %s',reqFromClient.protocol+'//'+reqFromClient.headers.host,`${options.headers.host}:${options.port}`,options.path);
+		let reqToServer=request(options,resFromServer=>{
 			cb(reqToServer,resFromServer);
-		}).on('error',e=>{
-			if(this.httpLog){
-				if(e.rawPacket)e.rawText=e.rawPacket.toString();
-				console.error('(proxy error)',reqFromClient.potocol+'://'+reqFromClient.headers.host,options.headers.host,options.path,e);
-			}
-			setImmediate(()=>{
-				reqToServer.removeAllListeners();
-				reqToServer.destroy();
-			});
 		});
-		reqFromClient.once('close',()=>{
-			reqToServer.end();
-		})
-		reqToServer.setTimeout(10000);
+		
 		streamChain.push(reqToServer);
-		pump(streamChain)
+
+		pipeline(streamChain,(err)=>{
+			if(err&&this.httpLog){
+				if(err.rawPacket)err.rawText=err.rawPacket.toString();
+				console.error('(relay request error) %s -> %s',reqFromClient.protocol+'//'+reqFromClient.headers.host,relayUrl);
+				console.error(err);
+			}
+		})
 	}
 	async _responseModder(resToClient,resFromServer,reqFromClient,reqToServer){
-		let headers=Object.assign({},resFromServer.headers),streamChain=[resFromServer];
+		let rawheaders=Object.assign({},resFromServer.headers),streamChain=[resFromServer];
+		const headers={};
+		for(let n in rawheaders){
+			headers[n.replace(/^\:/,'')]=rawheaders[n];
+		}
 		if(this.responseModder){
 			let streamModder=await this.responseModder(headers,resFromServer,reqFromClient);
 			if(streamModder){
@@ -197,12 +205,16 @@ class SocksInTheMiddle{
 				}
 			}
 		}
-		streamChain.push(resToClient);
 		for(let header in headers){
 			resToClient.setHeader(header,headers[header]);
 		}
 		resToClient.writeHead(resFromServer.statusCode,resFromServer.statusMessage);
-		pump(streamChain);
+		streamChain.push(resToClient);
+		pipeline(streamChain,(err)=>{
+			if(err){
+				console.error('(relay response error)',err);
+			}
+		});
 	}
 	/**
 	 *relay tcp connection to inner http server

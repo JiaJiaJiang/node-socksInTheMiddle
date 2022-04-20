@@ -165,7 +165,7 @@ class SocksInTheMiddle{
 		}
 		const relayUrl=`${options.protocol}//${options.hostname}:${options.port}${options.path}`;
 		// const protocol=overrideRequestOptions.protocol;
-		this.httpLog&&console.log('(relay out)[ %s -> %s ] %s',reqFromClient.protocol+'//'+reqFromClient.headers.host,`${options.headers.host}:${options.port}`,options.path);
+		this.httpLog&&console.log('(relay out)[ %s -> %s ] %s',options.protocol+'//'+reqFromClient.headers.host,`${options.headers.host}:${options.port}`,options.path);
 		let reqToServer=request(options,resFromServer=>{
 			cb(reqToServer,resFromServer);
 		});
@@ -173,10 +173,14 @@ class SocksInTheMiddle{
 		streamChain.push(reqToServer);
 
 		pipeline(streamChain,(err)=>{
-			if(err&&this.httpLog){
-				if(err.rawPacket)err.rawText=err.rawPacket.toString();
-				console.error('(relay request error) %s -> %s',reqFromClient.protocol+'//'+reqFromClient.headers.host,relayUrl);
-				console.error(err);
+			if(err){
+				reqToServer.destroyed||reqToServer.destroy(err);
+				resToClient.destroyed||resToClient.destroy(err);
+				if(this.httpLog){
+					if(err.rawPacket)err.rawText=err.rawPacket.toString();
+					console.error('(relay request error) %s -> %s',options.protocol+'//'+reqFromClient.headers.host,relayUrl);
+					console.error(err);
+				}
 			}
 		})
 	}
@@ -227,6 +231,7 @@ class SocksInTheMiddle{
 	relayTCP(socket, rawAddress, rawPort, CMD_REPLY){
 		let port;
 		CMD_REPLY();//must reply the socks request first to get raw tcp stream
+		this.socksLog&&console.log(`[TCP Relay]${rawAddress}:${rawPort}`);
 		socket.once('readable', () => {
 			let chunk = socket.read(15);
 			if(chunk){//check connection protocol
@@ -288,6 +293,7 @@ class SocksInTheMiddle{
 	 * @param {function} CMD_REPLY
 	 */
 	relayUDP(socket, address, port, CMD_REPLY){
+		this.socksLog&&console.log(`[UDP Relay]${address}:${port}`);
 		let relay=new UDPRelay(socket, address, port, CMD_REPLY);
 		relay.on('proxy_error',(relaySocket,direction,err)=>{
 			this.socksLog&&console.error('	[UDP proxy error]',`[${direction}]`,err.message);

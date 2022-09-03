@@ -18,8 +18,9 @@
   "author": "luojia@luojia.me",
   "license": "MIT",
   "dependencies": {
+    "got": "^12.4.1",
     "http2-client": "^1.3.5",
-    "socks5server": "^4.4.2"
+    "socks5server": "file:../node-socks5server"
   },
   "bugs": {
     "url": "https://github.com/JiaJiaJiang/node-socksInTheMiddle/issues"

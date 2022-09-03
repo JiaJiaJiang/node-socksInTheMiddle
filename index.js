@@ -2,6 +2,7 @@ const net = require('net'),
 	zlib = require('zlib'),
 	http = require('http'),
 	https = require('https'),
+	http2 = require('node:http2'),
 	{Transform,Readable} = require('stream');
 const {
 	createSocksServer,
@@ -9,8 +10,7 @@ const {
 	UDPRelay,
 } = require('socks5server/src/socks.js');
 const { pipeline } = require('stream');
-const { request } = require('http2-client');
-
+const { default: got } = require('got');
 /**
  * for getting a full buffer from a stream and modifying it
  *
@@ -55,6 +55,8 @@ class SocksInTheMiddle{
 	httpLog=true;
 	requestModder;
 	responseModder;
+	tcpOutGoingModder;
+	tcpInComingModder;
 	udpModder;
 	httpServer;
 	httpsServer;
@@ -71,7 +73,11 @@ class SocksInTheMiddle{
 			httpPort,
 			httpsPort,
 			httpsOptions,
+			socksLog,
+			httpLog,
 		}=socksServerOptions;
+		this.socksLog=socksLog||false;
+		this.httpLog=httpLog||false;
 		this.socksServer=createSocksServer(socksServerOptions);
 		this.socksServer
 		.on('tcp',this.relayTCP.bind(this))
@@ -88,7 +94,7 @@ class SocksInTheMiddle{
 
 		//create http server
 		if(Number.isInteger(httpPort)){
-			this.httpServer=http.createServer((req,res)=>this.dataModder(req,res,'http'))
+			this.httpServer=http.createServer((req,res)=>this._dataModder(req,res,'http'))
 			.listen(httpPort,'127.0.0.1',()=>{
 				this._httpReady=true;
 				this.socksLog&&console.log(`http server listening on : 127.0.0.1:${this.httpPort}`);
@@ -96,7 +102,15 @@ class SocksInTheMiddle{
 		}
 		//create https server
 		if(Number.isInteger(httpsPort)){
-			this.httpsServer=https.createServer(httpsOptions,(req,res)=>this.dataModder(req,res,'https'))
+			/* this.httpsServer=https.createServer(httpsOptions,(req,res)=>this._dataModder(req,res,'https'))
+			.listen(httpsPort,'127.0.0.1',()=>{
+				this._httpsReady=true;
+				this.socksLog&&console.log(`http server listening on : 127.0.0.1:${this.httpsPort}`);
+			}); */
+			this.httpsServer=http2.createSecureServer(httpsOptions)
+			.on('request',(req, res)=>{
+				this._dataModder(req,res,'https');
+			})
 			.listen(httpsPort,'127.0.0.1',()=>{
 				this._httpsReady=true;
 				this.socksLog&&console.log(`http server listening on : 127.0.0.1:${this.httpsPort}`);
@@ -115,6 +129,16 @@ class SocksInTheMiddle{
 		return this;
 	}
 	/**
+	 *set raw socks payload stream modder
+	 *
+	 * @param {Transform} outgoing
+	 * @param {Transform} incoming
+	 */
+	setTCPModder(outgoing,incoming){
+		this.tcpOutGoingModder=outgoing;
+		this.tcpInComingModder=incoming;
+	}
+	/**
 	 * set a udp modify function
 	 *
 	 * @param {functoin} func
@@ -123,20 +147,24 @@ class SocksInTheMiddle{
 		this.udpModder=func;
 		return this;
 	}
-	dataModder(reqFromClient,resToClient,protocol){
+	_dataModder(reqFromClient,resToClient,protocol){
 		reqFromClient.protocol=protocol;
 		this._requestModder(reqFromClient,resToClient,(reqToServer,resFromServer)=>{
 			this._responseModder(resToClient,resFromServer,reqFromClient,reqToServer);
 		});
 	}
 	async _requestModder(reqFromClient,resToClient,cb){
-		let rawheaders=Object.assign({},reqFromClient.headers),streamChain=[reqFromClient],
-			overrideRequestOptions={protocol:reqFromClient.protocol=='http'?'http:':'https:'};
+		let rawheaders=reqFromClient.headers,streamChain=[reqFromClient],
+			overrideRequestOptions={protocol:reqFromClient.protocol};
 		const headers={};
 		for(let n in rawheaders){
 			headers[n.replace(/^\:/,'')]=rawheaders[n];
 		}
-		// console.log(headers);
+		if(headers.authority){
+			headers.host=headers.authority;
+			delete headers.authority;
+		}
+		let rawHost=headers.host;
 		if(this.requestModder){
 			let streamModder=await this.requestModder(headers,reqFromClient,resToClient,overrideRequestOptions);
 			if(streamModder){
@@ -160,12 +188,13 @@ class SocksInTheMiddle{
 			timeout:10000,
 			rejectUnauthorized:true,
 		},overrideRequestOptions);
+		options.protocol=options.protocol+':';
 		if(!options.port){
 			options.port=options.protocol==='https:'?443:80;
 		}
 		const relayUrl=`${options.protocol}//${options.hostname}:${options.port}${options.path}`;
 		// const protocol=overrideRequestOptions.protocol;
-		this.httpLog&&console.log('(relay out)[ %s -> %s ] %s',options.protocol+'//'+reqFromClient.headers.host,`${options.headers.host}:${options.port}`,options.path);
+		this.httpLog&&console.log('(relay out)[ %s -> %s ] %s',options.protocol+'//'+rawHost,`${options.hostname}:${options.port}`,options.path);
 		let reqToServer=request(options,resFromServer=>{
 			cb(reqToServer,resFromServer);
 		});
@@ -174,11 +203,11 @@ class SocksInTheMiddle{
 
 		pipeline(streamChain,(err)=>{
 			if(err){
-				reqToServer.destroyed||reqToServer.destroy(err);
-				resToClient.destroyed||resToClient.destroy(err);
+				/* reqToServer.destroyed||reqToServer.destroy(err);
+				resToClient.destroyed||resToClient.destroy(err); */
 				if(this.httpLog){
 					if(err.rawPacket)err.rawText=err.rawPacket.toString();
-					console.error('(relay request error) %s -> %s',options.protocol+'//'+reqFromClient.headers.host,relayUrl);
+					console.error('(relay request error) %s -> %s',options.protocol+'//'+rawHost,relayUrl);
 					console.error(err);
 				}
 			}
@@ -253,6 +282,9 @@ class SocksInTheMiddle{
 			
 			if(!port)return;
 			let relay=new TCPRelay(socket, '127.0.0.1', port, CMD_REPLY);
+			//set stream modder for tcp relay
+			if(this.tcpOutGoingModder)relay.outModifier=new this.tcpOutGoingModder();
+			if(this.tcpInComingModder)relay.outModifier=new this.tcpInComingModder();
 			relay.once('connection',(socket,relaySocket)=>{
 				this.socksLog&&console.log('[TCP]',`${socket.remoteAddress}:${socket.remotePort} ==> ${net.isIP(rawAddress)?'':'('+rawAddress+')'} ${relaySocket.remoteAddress}:${relaySocket.remotePort}`);
 			}).on('proxy_error',(err,socket,relaySocket)=>{

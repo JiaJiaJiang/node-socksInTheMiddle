@@ -10,7 +10,6 @@ const {
 	UDPRelay,
 } = require('socks5server/src/socks.js');
 const { pipeline } = require('stream');
-const { default: got } = require('got');
 /**
  * for getting a full buffer from a stream and modifying it
  *
@@ -102,11 +101,6 @@ class SocksInTheMiddle{
 		}
 		//create https server
 		if(Number.isInteger(httpsPort)){
-			/* this.httpsServer=https.createServer(httpsOptions,(req,res)=>this._dataModder(req,res,'https'))
-			.listen(httpsPort,'127.0.0.1',()=>{
-				this._httpsReady=true;
-				this.socksLog&&console.log(`http server listening on : 127.0.0.1:${this.httpsPort}`);
-			}); */
 			this.httpsServer=http2.createSecureServer(httpsOptions)
 			.on('request',(req, res)=>{
 				this._dataModder(req,res,'https');
@@ -178,24 +172,28 @@ class SocksInTheMiddle{
 				return;
 			}
 		}
+		if(reqFromClient.errored || reqFromClient.destroyed){//dont create the relay if the source is errored or destroyed
+			return;
+		}
 		let host=headers.host.split(':');
+		let protocol=overrideRequestOptions.protocol;
 		let options=Object.assign({
 			headers,
 			method:reqFromClient.method,
-			path:reqFromClient.url,
-			hostname:host[0],
-			port:host[1],
 			timeout:10000,
 			rejectUnauthorized:true,
+			hostname:host[0],
+			port:host[1],
+			path:reqFromClient.url,
 		},overrideRequestOptions);
-		options.protocol=options.protocol+':';
+		options.protocol=protocol+':';
 		if(!options.port){
-			options.port=options.protocol==='https:'?443:80;
+			options.port=protocol==='https'?443:80;
 		}
-		const relayUrl=`${options.protocol}//${options.hostname}:${options.port}${options.path}`;
+		const relayUrl=`${protocol}://${options.hostname}:${options.port}${options.path}`;
 		// const protocol=overrideRequestOptions.protocol;
-		this.httpLog&&console.log('(relay out)[ %s -> %s ] %s',options.protocol+'//'+rawHost,`${options.hostname}:${options.port}`,options.path);
-		let reqToServer=request(options,resFromServer=>{
+		this.httpLog&&console.log('(relay out)[ %s -> %s ] %s',protocol+'://'+rawHost,`${options.hostname}:${options.port}`,options.path);
+		let reqToServer=(protocol==='https'?https:http).request(options,resFromServer=>{
 			cb(reqToServer,resFromServer);
 		});
 		
@@ -203,11 +201,9 @@ class SocksInTheMiddle{
 
 		pipeline(streamChain,(err)=>{
 			if(err){
-				/* reqToServer.destroyed||reqToServer.destroy(err);
-				resToClient.destroyed||resToClient.destroy(err); */
 				if(this.httpLog){
 					if(err.rawPacket)err.rawText=err.rawPacket.toString();
-					console.error('(relay request error) %s -> %s',options.protocol+'//'+rawHost,relayUrl);
+					console.error('(relay request error) %s -> %s',protocol+'://'+rawHost,relayUrl);
 					console.error(err);
 				}
 			}
@@ -223,7 +219,6 @@ class SocksInTheMiddle{
 			let streamModder=await this.responseModder(headers,resFromServer,reqFromClient);
 			if(streamModder){
 				delete headers['content-length'];
-				headers['transfer-encoding']='chunked';
 				if(streamModder instanceof Transform){//if the modder stream is an instance of Transform, the raw data will be piped in
 					let contentDecoder=contentDecoderSelector(resFromServer);
 					if(contentDecoder){
@@ -238,10 +233,11 @@ class SocksInTheMiddle{
 				}
 			}
 		}
+		delete headers['transfer-encoding'];//http2 dosen't support this header
 		for(let header in headers){
 			resToClient.setHeader(header,headers[header]);
 		}
-		resToClient.writeHead(resFromServer.statusCode,resFromServer.statusMessage);
+		resToClient.writeHead(resFromServer.statusCode);
 		streamChain.push(resToClient);
 		pipeline(streamChain,(err)=>{
 			if(err){

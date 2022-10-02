@@ -241,7 +241,7 @@ class SocksInTheMiddle{
 		streamChain.push(resToClient);
 		pipeline(streamChain,(err)=>{
 			if(err){
-				console.error('(relay response error)',err);
+				this.httpLog&&console.error('(relay response error)',err);
 			}
 		});
 		if(reqFromClient.errored || reqFromClient.destroyed || reqFromClient.closed){//close the response if the source is broken

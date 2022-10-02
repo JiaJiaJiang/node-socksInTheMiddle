@@ -245,7 +245,7 @@ class SocksInTheMiddle{
 			}
 		});
 		if(reqFromClient.errored || reqFromClient.destroyed || reqFromClient.closed){//close the response if the source is broken
-			resFromServer.close();
+			resFromServer.destroy();
 		}
 	}
 	/**

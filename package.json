@@ -18,7 +18,7 @@
   "author": "luojia@luojia.me",
   "license": "MIT",
   "dependencies": {
-    "socks5server": "^4.5.0"
+    "socks5server": "^4.5.1"
   },
   "bugs": {
     "url": "https://github.com/JiaJiaJiang/node-socksInTheMiddle/issues"

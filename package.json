@@ -12,13 +12,16 @@
   },
   "keywords": [
     "socks5",
+    "http proxy",
+    "websocket proxy",
     "http",
     "https"
   ],
   "author": "luojia@luojia.me",
   "license": "MIT",
   "dependencies": {
-    "socks5server": "^4.5.1"
+    "socks5server": "^4.5.1",
+    "ws": "^8.11.0"
   },
   "bugs": {
     "url": "https://github.com/JiaJiaJiang/node-socksInTheMiddle/issues"

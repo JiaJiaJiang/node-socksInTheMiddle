@@ -3,6 +3,8 @@ const net = require('net'),
 	http = require('http'),
 	https = require('https'),
 	http2 = require('node:http2'),
+	WebSocket = require('ws'),
+	{WebSocketServer}  = require('ws'),
 	{Transform,Readable} = require('stream');
 const {
 	createSocksServer,
@@ -54,11 +56,16 @@ class SocksInTheMiddle{
 	httpLog=true;
 	requestModder;
 	responseModder;
+	websocketModder;
 	tcpOutGoingModder;
 	tcpInComingModder;
 	udpModder;
 	httpServer;
 	httpsServer;
+	webSocketServer=new WebSocketServer({
+		clientTracking:false,
+		noServer:true,
+	});
 	get httpPort(){
 		return this.httpServer.address().port;
 	}
@@ -78,18 +85,21 @@ class SocksInTheMiddle{
 		this.socksLog=socksLog||false;
 		this.httpLog=httpLog||false;
 		this.socksServer=createSocksServer(socksServerOptions);
-		this.socksServer
-		.on('tcp',this.relayTCP.bind(this))
-		.on('udp',this.relayUDP.bind(this))
-		.on('error', e=>{
-			console.error('SERVER ERROR: %j', e);
-		}).on('client_error',(socket,e)=>{
-			this.socksLog&&console.error('  [client error]',`${net.isIP(socket.targetAddress)?'':'('+socket.targetAddress+')'} ${socket.remoteAddress}:${socket.targetPort}`,e.message);
-		}).on('socks_error',(socket,e)=>{
-			this.socksLog&&console.error('  [socks error]',`${net.isIP(socket.targetAddress)?'':'('+(socket.targetAddress||"unknown")+')'} ${socket.remoteAddress||"unknown"}:${socket.targetPort||"unknown"}`,e);
-		}).listen(socksPort||1080, socksHost||'127.0.0.1',()=>{
-			this.socksLog&&console.log(`socks server listening on : ${this.socksServer.address().address}:${this.socksServer.address().port}`);
-		});
+		this.websockets=new WeakMap();//req => socket
+		if(Number.isInteger(socksPort)){
+			this.socksServer
+			.on('tcp',this.relayTCP.bind(this))
+			.on('udp',this.relayUDP.bind(this))
+			.on('error', e=>{
+				console.error('SERVER ERROR: %j', e);
+			}).on('client_error',(socket,e)=>{
+				this.socksLog&&console.error('  [client error]',`${net.isIP(socket.targetAddress)?'':'('+socket.targetAddress+')'} ${socket.remoteAddress}:${socket.targetPort}`,e.message);
+			}).on('socks_error',(socket,e)=>{
+				this.socksLog&&console.error('  [socks error]',`${net.isIP(socket.targetAddress)?'':'('+(socket.targetAddress||"unknown")+')'} ${socket.remoteAddress||"unknown"}:${socket.targetPort||"unknown"}`,e);
+			}).listen(socksPort||1080, socksHost||'127.0.0.1',()=>{
+				this.socksLog&&console.log(`socks server listening on : ${this.socksServer.address().address}:${this.socksServer.address().port}`);
+			});
+		}
 
 		//create http server
 		if(Number.isInteger(httpPort)){
@@ -102,9 +112,7 @@ class SocksInTheMiddle{
 		//create https server
 		if(Number.isInteger(httpsPort)){
 			this.httpsServer=http2.createSecureServer(httpsOptions)
-			.on('request',(req, res)=>{
-				this._dataModder(req,res,'https');
-			})
+			.on('request',(req, res)=>this._dataModder(req,res,'https'))
 			.listen(httpsPort,'127.0.0.1',()=>{
 				this._httpsReady=true;
 				this.socksLog&&console.log(`http server listening on : 127.0.0.1:${this.httpsPort}`);
@@ -120,6 +128,15 @@ class SocksInTheMiddle{
 	setHTTPModder(reqMod,resMod){
 		this.requestModder=reqMod;
 		this.responseModder=resMod;
+		return this;
+	}
+	/**
+	 * set a WebSocket modify function
+	 *
+	 * @param {function(reqFromClient,source,data)} modder for modifying websocket messages
+	 */
+	setWebSocketModder(func){
+		this.websocketModder=func;
 		return this;
 	}
 	/**
@@ -155,13 +172,17 @@ class SocksInTheMiddle{
 			headers[n.replace(/^\:/,'')]=rawheaders[n];
 		}
 		if(headers.authority){
+			reqFromClient.isHTTP2=true;
 			headers.host=headers.authority;
 			delete headers.authority;
 		}
-		let rawHost=headers.host;
+		if(headers.upgrade){
+			reqFromClient.isWebScoket=true;
+		}
+		const rawURL=`${reqFromClient.protocol}://${headers.host}${reqFromClient.url}`;
 		if(this.requestModder){
 			let streamModder=await this.requestModder(headers,reqFromClient,resToClient,overrideRequestOptions);
-			if(streamModder){
+			if(!reqFromClient.isWebScoket&&streamModder){
 				if(streamModder instanceof Transform){//if the modder stream is an instance of Transform, the raw data will be piped in
 					streamChain.push(streamModder);
 				}else if(streamModder instanceof Readable){//if the modder stream is just a readable stream, the stream will replace the raw data
@@ -172,7 +193,8 @@ class SocksInTheMiddle{
 				return;
 			}
 		}
-		if(reqFromClient.errored || reqFromClient.destroyed){//dont create the relay if the source is errored or destroyed
+		if(reqFromClient.errored || reqFromClient.closed){//dont create the relay if the source is errored or destroyed
+			for(let s of streamChain)if(!s.destroyed)s.destroy();
 			return;
 		}
 		let host=headers.host.split(':');
@@ -190,62 +212,111 @@ class SocksInTheMiddle{
 		if(!options.port){
 			options.port=protocol==='https'?443:80;
 		}
-		const relayUrl=`${protocol}://${options.hostname}:${options.port}${options.path}`;
-		// const protocol=overrideRequestOptions.protocol;
-		this.httpLog&&console.log('(relay out)[ %s -> %s ] %s',protocol+'://'+rawHost,`${options.hostname}:${options.port}`,options.path);
-		let reqToServer=(protocol==='https'?https:http).request(options,resFromServer=>{
-			cb(reqToServer,resFromServer);
-		});
+		const relayURL=`${protocol}://${options.hostname}:${options.port}${options.path}`;
+		reqFromClient.relayURL=relayURL;
+		this.httpLog&&console.log('(relay out)[%s] -> [%s]',rawURL,relayURL);
+		let reqToServer;
+		if(reqFromClient.isWebScoket){
+			reqToServer=new WebSocket(relayURL.replace(/^http/,'ws'),options);
+			reqToServer.on('upgrade',(resFromServer)=>{
+				cb(reqToServer,resFromServer);
+			}).on('error',err=>{
+				if(this.httpLog){
+					console.error(`(relay websocket error) [${reqFromClient.relayURL}]`);
+					console.error(err);
+				}
+			});
+			return;
+		}else{
+			reqToServer=(protocol==='https'?https:http).request(options,(resFromServer)=>{
+				cb(reqToServer,resFromServer);
+			});
+		}
 		
 		streamChain.push(reqToServer);
-
 		pipeline(streamChain,(err)=>{
 			if(err){
 				if(this.httpLog){
 					if(err.rawPacket)err.rawText=err.rawPacket.toString();
-					console.error('(relay request error) %s -> %s',protocol+'://'+rawHost,relayUrl);
+					console.error('(relay request error)[%s] -> [%s]',rawURL,relayURL);
 					console.error(err);
 				}
 			}
-		})
+		});
 	}
 	async _responseModder(resToClient,resFromServer,reqFromClient,reqToServer){
+		if(reqFromClient.errored  || reqFromClient.closed){//close the response if the source has broken
+			if(!resFromServer.destroyed)resFromServer.destroy();
+			return;
+		}
 		let rawheaders=Object.assign({},resFromServer.headers),streamChain=[resFromServer];
 		const headers={};
 		for(let n in rawheaders){
-			headers[n.replace(/^\:/,'')]=rawheaders[n];
+			headers[n]=rawheaders[n];
 		}
 		if(this.responseModder){
 			let streamModder=await this.responseModder(headers,resFromServer,reqFromClient);
-			if(streamModder){
+			if(!reqFromClient.isWebScoket&&streamModder){
 				delete headers['content-length'];
+				const enc=headers['content-encoding'];
 				if(streamModder instanceof Transform){//if the modder stream is an instance of Transform, the raw data will be piped in
-					let contentDecoder=contentDecoderSelector(resFromServer);
+					const contentDecoder=contentDecoderSelector(enc);
 					if(contentDecoder){
-						delete headers['content-encoding'];
 						streamChain.push(contentDecoder);
 					}
 					streamChain.push(streamModder);
-				}else if(streamModder instanceof Readable){//if the modder stream is just a readable stream, the stream will replace the raw data
 					delete headers['content-encoding'];
+					//todo fix here
+					/* const contentEncoder=contentEncoderSelector(enc);
+					if(contentEncoder){
+						streamChain.push(contentEncoder);
+					} */
+				}else if(streamModder instanceof Readable){//if the modder stream is just a readable stream, the stream will replace the raw data
 					streamChain=[streamModder];
+					//todo fix here
+					/* const contentEncoder=contentEncoderSelector(enc);
+					if(contentEncoder){
+						streamChain.push(contentEncoder);
+					} */
 					resFromServer.on('data',()=>{});//consume source data
 				}
 			}
 		}
-		delete headers['transfer-encoding'];//http2 dosen't support this header
+		if(reqFromClient.errored || reqFromClient.closed){//close the response if the source has broken
+			if(!resFromServer.destroyed)resFromServer.destroy();
+			for(let s of streamChain)if(!s.destroyed)s.destroy();
+			return;
+		}
+		if(reqFromClient.isHTTP2){
+			delete headers['transfer-encoding'];//http2 dosen't support this header
+		}
 		for(let header in headers){
 			resToClient.setHeader(header,headers[header]);
 		}
-		resToClient.writeHead(resFromServer.statusCode);
-		streamChain.push(resToClient);
-		pipeline(streamChain,(err)=>{
-			if(err){
-				this.httpLog&&console.error('(relay response error)',err);
-			}
-		});
-		if(reqFromClient.errored || reqFromClient.destroyed || reqFromClient.closed){//close the response if the source is broken
-			resFromServer.destroy();
+		if(reqFromClient.isWebScoket){
+			this.webSocketServer.handleUpgrade(reqFromClient, reqFromClient.socket, '', (ws)=>{
+				ws.once('open',()=>{
+				}).on('message',async (data,isBinary)=>{
+					data=isBinary?data:data.toString();
+					data=await (this.websocketModder?.(reqFromClient,'client',data)||data);
+					reqToServer.send(data);
+				});
+				reqToServer.on('message',async (data,isBinary)=>{
+					data=await (this.websocketModder?.(reqFromClient,'server',data)||data);
+					ws.send(data);
+				});
+			});
+		}else{
+			resToClient.writeHead(resFromServer.statusCode);
+			streamChain.push(resToClient);
+			pipeline(streamChain,(err)=>{
+				if(err){
+					if(this.httpLog){
+						console.error(`(relay response error) [${reqFromClient.relayURL}]`);
+						console.error(err);
+					}
+				}
+			});
 		}
 	}
 	/**
@@ -342,19 +413,27 @@ class SocksInTheMiddle{
 	}
 }
 
-function contentDecoderSelector(sourceStream){
-	let enc=sourceStream.headers['content-encoding'],
-		stream;
+function contentDecoderSelector(enc){
 	if(enc){
 		switch(enc){
-			case 'gzip':stream = zlib.createUnzip();break;
-			case 'deflate':stream = zlib.createInflate();break;
-			case 'br':stream = zlib.createBrotliDecompress();break;
+			case 'gzip':return zlib.createUnzip();
+			case 'deflate':return zlib.createUnzip();
+			case 'br':return zlib.createBrotliDecompress();
 			default:throw(new Error('unknown encoding:'+enc));
 		}
 	}
-	return stream;
 }
+function contentEncoderSelector(enc){
+	if(enc){
+		switch(enc){
+			case 'gzip':return zlib.createGzip();
+			case 'deflate':return zlib.createDeflate();
+			case 'br':return zlib.createBrotliCompress();
+			default:throw(new Error('unknown encoding:'+enc));
+		}
+	}
+}
+
 function isHTTPHeader(buf){
 	let str=buf.toString();
 	if(str.startsWith('GET')

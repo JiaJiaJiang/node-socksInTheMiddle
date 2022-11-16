@@ -200,7 +200,7 @@ class SocksInTheMiddle{
 			}
 		}
 		if(reqFromClient.errored || reqFromClient.closed){//dont create the relay if the source is errored or destroyed
-			for(let s of streamChain)if(!s.destroyed)s.destroy();
+			// for(let s of streamChain)if(!s.destroyed)s.destroy();
 			return;
 		}
 		let host=headers.host.split(':');
@@ -290,7 +290,7 @@ class SocksInTheMiddle{
 		}
 		if(reqFromClient.errored || reqFromClient.closed){//close the response if the source has broken
 			if(!resFromServer.destroyed)resFromServer.destroy();
-			for(let s of streamChain)if(!s.destroyed)s.destroy();
+			// for(let s of streamChain)if(!s.destroyed)s.destroy();
 			return;
 		}
 		if(reqFromClient.isHTTP2){
@@ -308,6 +308,7 @@ class SocksInTheMiddle{
 					reqToServer.send(data);
 				});
 				reqToServer.on('message',async (data,isBinary)=>{
+					data=isBinary?data:data.toString();
 					data=await (this.websocketModder?.(reqFromClient,'server',data)||data);
 					ws.send(data);
 				});

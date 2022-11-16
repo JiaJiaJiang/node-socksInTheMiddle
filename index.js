@@ -76,7 +76,9 @@ class SocksInTheMiddle{
 		const {
 			socksHost,
 			socksPort,
+			httpHost,
 			httpPort,
+			httpsHost,
 			httpsPort,
 			httpsOptions,
 			socksLog,
@@ -104,7 +106,7 @@ class SocksInTheMiddle{
 		//create http server
 		if(Number.isInteger(httpPort)){
 			this.httpServer=http.createServer((req,res)=>this._dataModder(req,res,'http'))
-			.listen(httpPort,'127.0.0.1',()=>{
+			.listen(httpPort,httpHost||'127.0.0.1',()=>{
 				this._httpReady=true;
 				this.httpLog&&console.log(`http server listening on : 127.0.0.1:${this.httpPort}`);
 			});
@@ -113,7 +115,7 @@ class SocksInTheMiddle{
 		if(Number.isInteger(httpsPort)){
 			this.httpsServer=http2.createSecureServer(httpsOptions)
 			.on('request',(req, res)=>this._dataModder(req,res,'https'))
-			.listen(httpsPort,'127.0.0.1',()=>{
+			.listen(httpsPort,httpsHost||'127.0.0.1',()=>{
 				this._httpsReady=true;
 				this.httpLog&&console.log(`http server listening on : 127.0.0.1:${this.httpsPort}`);
 			});

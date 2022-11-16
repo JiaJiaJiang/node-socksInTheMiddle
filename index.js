@@ -111,6 +111,7 @@ class SocksInTheMiddle{
 				const {address,port}=this.httpServer.address();
 				this.httpLog&&console.log(`http server listening on : ${address}:${port}`);
 			});
+			this.httpLog&&console.log(`http server try listening on : ${httpHost||'127.0.0.1'}:${httpPort}`);
 		}
 		//create https server
 		if(Number.isInteger(httpsPort)){
@@ -119,8 +120,9 @@ class SocksInTheMiddle{
 			.listen(httpsPort,httpsHost||'127.0.0.1',()=>{
 				this._httpsReady=true;
 				const {address,port}=this.httpServer.address();
-				this.httpLog&&console.log(`http server listening on : ${address}:${port}`);
+				this.httpLog&&console.log(`https server listening on : ${address}:${port}`);
 			});
+			this.httpLog&&console.log(`https server try listening on : ${httpsHost||'127.0.0.1'}:${httpsPort}`);
 		}
 	}
 	/**

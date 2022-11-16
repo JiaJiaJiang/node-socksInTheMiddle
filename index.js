@@ -106,7 +106,7 @@ class SocksInTheMiddle{
 			this.httpServer=http.createServer((req,res)=>this._dataModder(req,res,'http'))
 			.listen(httpPort,'127.0.0.1',()=>{
 				this._httpReady=true;
-				this.socksLog&&console.log(`http server listening on : 127.0.0.1:${this.httpPort}`);
+				this.httpLog&&console.log(`http server listening on : 127.0.0.1:${this.httpPort}`);
 			});
 		}
 		//create https server
@@ -115,7 +115,7 @@ class SocksInTheMiddle{
 			.on('request',(req, res)=>this._dataModder(req,res,'https'))
 			.listen(httpsPort,'127.0.0.1',()=>{
 				this._httpsReady=true;
-				this.socksLog&&console.log(`http server listening on : 127.0.0.1:${this.httpsPort}`);
+				this.httpLog&&console.log(`http server listening on : 127.0.0.1:${this.httpsPort}`);
 			});
 		}
 	}

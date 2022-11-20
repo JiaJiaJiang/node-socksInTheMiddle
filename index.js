@@ -24,7 +24,8 @@ class BufferModder extends Transform{
 	 */
 	constructor(processer){
 		super({
-			highWaterMark:1638400,
+			objectMode:true,
+			highWaterMark:99999999999,
 			allowHalfOpen:false,
 		});
 		this.processer=processer;

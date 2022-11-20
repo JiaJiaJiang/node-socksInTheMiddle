@@ -5,7 +5,7 @@ const net = require('net'),
 	http2 = require('node:http2'),
 	WebSocket = require('ws'),
 	{WebSocketServer}  = require('ws'),
-	{Transform,Readable} = require('stream');
+	{Transform,Readable,pipeline} = require('stream');
 const {
 	createSocksServer,
 	TCPRelay,
@@ -244,8 +244,8 @@ class SocksInTheMiddle{
 		}
 		
 		streamChain.push(reqToServer);
-		chainPipe(streamChain,(err)=>{
-			if(this.httpLog){
+		pipeline(streamChain,(err)=>{
+			if(err&&this.httpLog){
 				if(err.rawPacket)err.rawText=err.rawPacket.toString();
 				console.error(`(relay request error)[%s]`,rawURL,rawURL!==relayURL?` -> [${relayURL}]`:'');
 				console.error(err);
@@ -317,8 +317,8 @@ class SocksInTheMiddle{
 		}else{
 			resToClient.writeHead(resFromServer.statusCode);
 			streamChain.push(resToClient);
-			chainPipe(streamChain,(err)=>{
-				if(this.httpLog){
+			pipeline(streamChain,(err)=>{
+				if(err&&this.httpLog){
 					console.error(`(relay response error) [${reqFromClient.relayURL}]`);
 					console.error(err);
 				}
@@ -436,7 +436,7 @@ function contentEncoderSelector(enc){
 	}
 }
 
-function chainPipe(chain,cb){
+/* function chainPipe(chain,cb){
 	let lastStream,calledCb=false,i=0;
 	for(let s of chain){
 		if(lastStream)lastStream.pipe(s);
@@ -456,7 +456,7 @@ function chainPipe(chain,cb){
 			}
 		});
 	}
-}
+} */
 
 function isHTTPHeader(buf){
 	let str=buf.toString();

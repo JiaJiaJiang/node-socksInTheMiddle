@@ -212,7 +212,6 @@ class SocksInTheMiddle{
 		let options=Object.assign({
 			headers,
 			method:reqFromClient.method,
-			timeout:10000,
 			rejectUnauthorized:true,
 			hostname:host[0],
 			port:host[1],

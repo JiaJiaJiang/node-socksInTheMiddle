@@ -11,7 +11,6 @@ const {
 	TCPRelay,
 	UDPRelay,
 } = require('socks5server/src/socks.js');
-const { pipeline } = require('stream');
 /**
  * for getting a full buffer from a stream and modifying it
  *
@@ -24,13 +23,16 @@ class BufferModder extends Transform{
 	 * @param {function(Buffer):Buffer|string} processer 
 	 */
 	constructor(processer){
-		super({highWaterMark:1638400});
+		super({
+			highWaterMark:1638400,
+			allowHalfOpen:false,
+		});
 		this.processer=processer;
 		this.buf=[];
 	}
 	_transform(chunk, encoding, cb){
 		this.buf.push(chunk);
-		setImmediate(cb,null)
+		setImmediate(cb,null);
 	}
 	async _flush(cb){
 		let result=await this.processer(Buffer.concat(this.buf));
@@ -185,7 +187,8 @@ class SocksInTheMiddle{
 		if(headers.upgrade){
 			reqFromClient.isWebScoket=true;
 		}
-		const rawURL=`${reqFromClient.protocol}://${headers.host}${reqFromClient.url}`;
+		const rawHost=headers.host.split(':');
+		const rawURL=`${reqFromClient.protocol}://${headers.host}:${rawHost[1]||(reqFromClient.protocol==='https'?443:80)}${reqFromClient.url}`;
 		if(this.requestModder){
 			let streamModder=await this.requestModder(headers,reqFromClient,resToClient,overrideRequestOptions);
 			if(!reqFromClient.isWebScoket&&streamModder){
@@ -220,7 +223,7 @@ class SocksInTheMiddle{
 		}
 		const relayURL=`${protocol}://${options.hostname}:${options.port}${options.path}`;
 		reqFromClient.relayURL=relayURL;
-		this.httpLog&&console.log('(relay out)[%s] -> [%s]',rawURL,relayURL);
+		this.httpLog&&console.log(`(relay out)[%s]`,rawURL,rawURL!==relayURL?` -> [${relayURL}]`:'');
 		let reqToServer;
 		if(reqFromClient.isWebScoket){
 			reqToServer=new WebSocket(relayURL.replace(/^http/,'ws'),options);
@@ -240,13 +243,11 @@ class SocksInTheMiddle{
 		}
 		
 		streamChain.push(reqToServer);
-		pipeline(streamChain,(err)=>{
-			if(err){
-				if(this.httpLog){
-					if(err.rawPacket)err.rawText=err.rawPacket.toString();
-					console.error('(relay request error)[%s] -> [%s]',rawURL,relayURL);
-					console.error(err);
-				}
+		chainPipe(streamChain,(err)=>{
+			if(this.httpLog){
+				if(err.rawPacket)err.rawText=err.rawPacket.toString();
+				console.error(`(relay request error)[%s]`,rawURL,rawURL!==relayURL?` -> [${relayURL}]`:'');
+				console.error(err);
 			}
 		});
 	}
@@ -264,24 +265,24 @@ class SocksInTheMiddle{
 			let streamModder=await this.responseModder(headers,resFromServer,reqFromClient);
 			if(!reqFromClient.isWebScoket&&streamModder){
 				delete headers['content-length'];
+				headers['transfer-encoding']='chunked';
 				const enc=headers['content-encoding'];
 				if(streamModder instanceof Transform){//if the modder stream is an instance of Transform, the raw data will be piped in
-					const contentDecoder=contentDecoderSelector(enc);
-					if(contentDecoder){
-						streamChain.push(contentDecoder);
+					if(enc){
+						const contentDecoder=contentDecoderSelector(enc)/* ,
+							contentEncoder=contentEncoderSelector(enc) */;
+						streamChain.push(contentDecoder,streamModder/* ,contentEncoder */);
+						delete headers['content-encoding'];
+					}else{
+						streamChain.push(streamModder);
 					}
-					streamChain.push(streamModder);
-					delete headers['content-encoding'];
 					//todo fix here
-					/* const contentEncoder=contentEncoderSelector(enc);
-					if(contentEncoder){
-						streamChain.push(contentEncoder);
-					} */
 				}else if(streamModder instanceof Readable){//if the modder stream is just a readable stream, the stream will replace the raw data
 					streamChain=[streamModder];
+					delete headers['content-encoding'];
 					//todo fix here
-					/* const contentEncoder=contentEncoderSelector(enc);
-					if(contentEncoder){
+					/* if(enc){
+						const contentEncoder=contentEncoderSelector(enc);
 						streamChain.push(contentEncoder);
 					} */
 					resFromServer.on('data',()=>{});//consume source data
@@ -290,7 +291,6 @@ class SocksInTheMiddle{
 		}
 		if(reqFromClient.errored || reqFromClient.closed){//close the response if the source has broken
 			if(!resFromServer.destroyed)resFromServer.destroy();
-			// for(let s of streamChain)if(!s.destroyed)s.destroy();
 			return;
 		}
 		if(reqFromClient.isHTTP2){
@@ -316,12 +316,10 @@ class SocksInTheMiddle{
 		}else{
 			resToClient.writeHead(resFromServer.statusCode);
 			streamChain.push(resToClient);
-			pipeline(streamChain,(err)=>{
-				if(err){
-					if(this.httpLog){
-						console.error(`(relay response error) [${reqFromClient.relayURL}]`);
-						console.error(err);
-					}
+			chainPipe(streamChain,(err)=>{
+				if(this.httpLog){
+					console.error(`(relay response error) [${reqFromClient.relayURL}]`);
+					console.error(err);
 				}
 			});
 		}
@@ -421,23 +419,41 @@ class SocksInTheMiddle{
 }
 
 function contentDecoderSelector(enc){
-	if(enc){
-		switch(enc){
-			case 'gzip':return zlib.createUnzip();
-			case 'deflate':return zlib.createUnzip();
-			case 'br':return zlib.createBrotliDecompress();
-			default:throw(new Error('unknown encoding:'+enc));
-		}
+	switch(enc){
+		case 'gzip':return zlib.createUnzip();
+		case 'deflate':return zlib.createInflate();
+		case 'br':return zlib.createBrotliDecompress();
+		default:throw(new Error('unknown encoding:'+enc));
 	}
 }
 function contentEncoderSelector(enc){
-	if(enc){
-		switch(enc){
-			case 'gzip':return zlib.createGzip();
-			case 'deflate':return zlib.createDeflate();
-			case 'br':return zlib.createBrotliCompress();
-			default:throw(new Error('unknown encoding:'+enc));
-		}
+	switch(enc){
+		case 'gzip':return zlib.createGzip();
+		case 'deflate':return zlib.createDeflate();
+		case 'br':return zlib.createBrotliCompress();
+		default:throw(new Error('unknown encoding:'+enc));
+	}
+}
+
+function chainPipe(chain,cb){
+	let lastStream,calledCb=false,i=0;
+	for(let s of chain){
+		if(lastStream)lastStream.pipe(s);
+		lastStream=s;
+		const ind=i++;
+		s.once('error',err=>{
+			err.streamIndex=ind;
+			err.chainLength=chain.length;
+			err.streamType=s.constructor?.name||'unknown';
+			if(!calledCb){
+				cb(err);
+				calledCb=true;
+			}
+			for(let stream of chain){
+				if(s===stream || stream.errored || stream.closed || stream.destroyed || stream.writableFinished)continue;
+				stream.destroy(err);
+			}
+		});
 	}
 }
 

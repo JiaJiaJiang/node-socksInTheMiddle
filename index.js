@@ -269,8 +269,8 @@ class SocksInTheMiddle{
 				const enc=headers['content-encoding'];
 				if(streamModder instanceof Transform){//if the modder stream is an instance of Transform, the raw data will be piped in
 					if(enc){
-						const contentDecoder=contentDecoderSelector(enc)/* ,
-							contentEncoder=contentEncoderSelector(enc) */;
+						const contentDecoder=contentDecoderSelector(enc);
+						// const contentEncoder=contentEncoderSelector(enc);//encode the data back is uselesss
 						streamChain.push(contentDecoder,streamModder/* ,contentEncoder */);
 						delete headers['content-encoding'];
 					}else{

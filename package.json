@@ -20,9 +20,9 @@
   "author": "luojia@luojia.me",
   "license": "MIT",
   "dependencies": {
-    "pump": "^3.0.0",
+    "pump": "^3.0.2",
     "socks5server": "^4.5.2",
-    "ws": "^8.11.0"
+    "ws": "^8.18.0"
   },
   "bugs": {
     "url": "https://github.com/JiaJiaJiang/node-socksInTheMiddle/issues"

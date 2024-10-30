@@ -186,3 +186,7 @@ server.setHTTPModder(async (headers,reqFromClient,resToClient,overrideRequestOpt
 ```
 
 Then you can visit `http://127.0.0.1:5607` for the proxied website.
+
+# Ver 3.0: Breaking changes
+
+To make the program logic clearer and increase compatibility with different http versions, the parameters of "reqMod" and "resMod" function for the setHTTPModder method are changed to a "RequestOptions" object(for reqMod) and a "ResponseOptions" object(for resMod).

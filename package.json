@@ -20,6 +20,9 @@
   "author": "luojia@luojia.me",
   "license": "MIT",
   "dependencies": {
+    "http2-wrapper": "^2.2.1",
+    "lodash.clonedeep": "^4.5.0",
+    "lodash.merge": "^4.6.2",
     "pump": "^3.0.2",
     "socks5server": "^4.5.2",
     "ws": "^8.18.0"

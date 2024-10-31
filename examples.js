@@ -5,18 +5,19 @@ const {
 	ResponseOptions,//just import for type tip
 } = require('./index');
 const fs = require('fs');
-const { Readable } = require('stream');
 let server = new SocksInTheMiddle({
 	socksPort: 1099,
 	socksHost: '0.0.0.0',
 	httpPort: 0,
 	httpsPort: 0,
 	httpsOptions: {
-		key: fs.readFileSync("E:/Dev/cert/server.key"),
-		cert: fs.readFileSync('E:/Dev/cert/server.crt'),
+		key: fs.readFileSync("/your/path/to/server.key"),
+		cert: fs.readFileSync('/your/path/to/server.crt'),
 		allowHTTP1: true,
 	}
 });
+
+const { Readable } = require('stream');
 
 //HTTP modifier
 server.setHTTPModder(async (reqOptions) => {//request modifier
@@ -45,7 +46,7 @@ server.setHTTPModder(async (reqOptions) => {//request modifier
 	/* Methods */
 	reqOptions.toURL();//construct a url string from object properties, this is only for debug, will not change relay behaviour
 
-	/* Examples */
+	/* Examples (each block is an example) */
 	const {
 		headers,
 		reqFromClient,
@@ -97,7 +98,7 @@ server.setHTTPModder(async (reqOptions) => {//request modifier
 	// response from target server, this can be different class depending on serverHttpVersion
 	resOptions.resFromServer;
 
-	/* Examples */
+	/* Examples (each block is an example) */
 	const { requestOptions, headers, resFromServer, reqFromClient } = resOptions;
 	{
 		//you can change response headers here and they will be sent back to client
@@ -128,7 +129,7 @@ server.setHTTPModder(async (reqOptions) => {//request modifier
 //UDP modifier
 server.setUDPModder(async (fromClient, packet) => {
 	//modify udp packet here
-	fromClient;//is this packet from the client
+	fromClient;//this is packet from the client
 
 	// when fromClient is true
 	packet.address;//target address
@@ -144,10 +145,9 @@ server.setUDPModder(async (fromClient, packet) => {
 	//port will not take effect, because the packet must be sent back
 	//to the client
 
-
 	//change target address
-	/* if(fromClient){
+	if(fromClient){
 		packet.address='127.0.0.1';
 		packet.port=12345;
-	} */
+	}
 });

@@ -59,9 +59,9 @@ class RequestOptions {
 	method;
 	/** @type {string} connection scheme, "http"|"https"|"ws" etc. */
 	scheme;
-	/** @type {string} (optional)http host header, will be set to "authority" in http2 */
+	/** @type {string} (optional)http host header, can contain port,  the hostname part will be set to "authority" in http2 */
 	host;
-	/** @type {string} (optional)the real port to connect to */
+	/** @type {number} (optional)the real port to connect to */
 	port;
 	/** @type {string} http path */
 	path;
@@ -256,8 +256,8 @@ class SocksInTheMiddle {
 	}
 	_dataModder(reqFromClient, resToClient, protocol) {
 		reqFromClient.protocol = protocol;
-		this._requestModder(reqFromClient, resToClient, (reqToServer, resFromServer,reqOptions) => {
-			this._responseModder(resToClient, resFromServer, reqFromClient, reqToServer,reqOptions);
+		this._requestModder(reqFromClient, resToClient, (reqToServer, resFromServer, reqOptions) => {
+			this._responseModder(resToClient, resFromServer, reqFromClient, reqToServer, reqOptions);
 		}).catch(err => {
 			this.httpLog && console.error(err);
 		});
@@ -373,7 +373,7 @@ class SocksInTheMiddle {
 			}
 		});
 	}
-	async _responseModder(resToClient, resFromServer, reqFromClient, reqToServer,reqOptions) {
+	async _responseModder(resToClient, resFromServer, reqFromClient, reqToServer, reqOptions) {
 		let streamChain = [resFromServer];
 		function badStatCheck(forceError) {
 			if (resToClient.errored || resToClient.closed || resToClient.destroyed || forceError) {
@@ -393,7 +393,7 @@ class SocksInTheMiddle {
 		});
 		defineReadOnly(resOptions, {
 			serverHttpVersion: resFromServer.httpVersionMajor,
-			requestOptions:reqOptions,
+			requestOptions: reqOptions,
 			reqFromClient,
 			resToClient,
 			resFromServer,
@@ -425,7 +425,9 @@ class SocksInTheMiddle {
 							const contentEncoder=contentEncoderSelector(enc);
 							streamChain.push(contentEncoder);
 						} */
-						resFromServer.on('data', () => { });//consume source data
+						//ignore server response
+						resFromServer.destroy();
+						// resFromServer.on('data', () => { });//consume source data
 					}
 				}
 			} catch (err) {
@@ -624,5 +626,7 @@ function defineReadOnly(obj, props) {
 }
 module.exports = {
 	SocksInTheMiddle,
+	RequestOptions,
+	ResponseOptions,
 	BufferModder,
 }

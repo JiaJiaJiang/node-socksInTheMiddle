@@ -60,7 +60,7 @@ server.setHTTPModder(async (reqOptions) => {//request modifier
 	}
 	{
 		//If yout want to do a custom responding or to block the request, 
-		//just operate the resToClient object like a common http response and return false here.
+		//just operate the resToClient object like a common http response and return here.
 		resToClient.end('blocked');
 		//`return undefined` means their is no "body modder"
 		return;
@@ -70,7 +70,8 @@ server.setHTTPModder(async (reqOptions) => {//request modifier
 		return false;
 	}
 	{
-		//If you want to edit request body, you can return a BufferModder, see below for example
+		//If you want to edit request body, you can return a stream, such as BufferModder,
+		//see below for example
 		return new BufferModder(buf => {
 			// buf is a Buffer object
 			return buf;//return a Buffer or a string is ok

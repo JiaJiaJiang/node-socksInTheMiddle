@@ -156,6 +156,7 @@ class SocksInTheMiddle {
 		clientTracking: false,
 		noServer: true,
 	});
+	activeRelays = new Set();
 	get httpPort() {
 		return this.httpServer.address().port;
 	}
@@ -501,6 +502,7 @@ class SocksInTheMiddle {
 
 			if (!port) return;
 			let relay = new TCPRelay(socket, '127.0.0.1', port, CMD_REPLY);
+			this.activeRelays.add(relay);
 			//set stream modder for tcp relay
 			if (this.tcpOutGoingModder) relay.outModifier = new this.tcpOutGoingModder();
 			if (this.tcpInComingModder) relay.outModifier = new this.tcpInComingModder();
@@ -509,6 +511,7 @@ class SocksInTheMiddle {
 			}).on('proxy_error', (err, socket, relaySocket) => {
 				this.socksLog && console.error('	[TCP proxy error]', `${relay.remoteAddress}:${relay.remotePort}`, err.message);
 			}).once('close', e => {
+				this.activeRelays.delete(relay);
 				let msg = '';
 				if (socket.remoteAddress)
 					msg += `${socket.remoteAddress}:${socket.remotePort} ==> `;
@@ -546,19 +549,27 @@ class SocksInTheMiddle {
 	relayUDP(socket, address, port, CMD_REPLY) {
 		this.socksLog && console.log(`[UDP Relay]${address}:${port}`);
 		let relay = new UDPRelay(socket, address, port, CMD_REPLY);
+		this.activeRelays.add(relay);
 		relay.on('proxy_error', (relaySocket, direction, err) => {
+			this.activeRelays.delete(relay)
 			this.socksLog && console.error('	[UDP proxy error]', `[${direction}]`, err.message);
 		});
 		relay.relaySocket.once('close', () => {
+			this.activeRelays.delete(relay)
 			this.socksLog && console.log('  [UDP closed]', socket.remoteAddress);
 		});
 
 		relay.packetHandler = this._udpModder.bind(this);
 	}
 	close() {
+		// clear all active relays
+		this.activeRelays.forEach(relay => relay.close());
+		this.activeRelays.clear();
+
 		this.socksServer.close();
 		this.httpServer && this.httpServer.close();
 		this.httpsServer && this.httpsServer.close();
+		this.webSocketServer && this.webSocketServer.close();
 	}
 }
 

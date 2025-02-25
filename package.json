@@ -24,7 +24,7 @@
     "lodash.clonedeep": "^4.5.0",
     "lodash.merge": "^4.6.2",
     "pump": "^3.0.2",
-    "socks5server": "^4.5.3",
+    "socks5server": "^4.5.4",
     "ws": "^8.18.1"
   },
   "bugs": {
